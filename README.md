@@ -81,43 +81,20 @@ FastDuplicateCleaner uses a **multi-step pipeline** to safely detect duplicates.
 
 ---
 
-## Building the Executable
+## Prerequisites
 
-### Prerequisites
-
-* Windows
-* .NET SDK installed (`dotnet --version` should work)
-
-### Build a Single-File EXE
-
-From the project folder:
-
-```powershell
-dotnet publish FastDuplicateCleaner.cs `
-  -c Release `
-  -r win-x64 `
-  /p:SelfContained=true `
-  /p:PublishSingleFile=true `
-  /p:PublishAot=false `
-  -o .\output
-```
-
-The executable will be created at:
-
-```
-output/FastDuplicateCleaner.exe
-```
+* [.NET 8 SDK](https://dotnet.microsoft.com/download) or later (`dotnet --version` should print `8.x` or higher)
 
 ---
 
-## Usage
+## Running the Tool
 
 ### Interactive Mode
 
-Run the executable without arguments:
+From the repository root, run without arguments and follow the on-screen prompts:
 
 ```powershell
-FastDuplicateCleaner.exe
+dotnet run
 ```
 
 You will be prompted for:
@@ -126,17 +103,38 @@ You will be prompted for:
 2. Mode (`dry`, `move`, or `delete`)
 3. Destination folder (if using `move`)
 
----
-
 ### Command-Line Mode
 
+Pass arguments after `--` so they are forwarded to the application instead of the `dotnet` CLI:
+
 ```powershell
-FastDuplicateCleaner.exe dry "C:\MyFolder"
-FastDuplicateCleaner.exe delete "C:\MyFolder"
-FastDuplicateCleaner.exe move "C:\MyFolder" "C:\Duplicates"
+dotnet run -- dry    "C:\MyFolder"
+dotnet run -- delete "C:\MyFolder"
+dotnet run -- move   "C:\MyFolder" "C:\Duplicates"
+```
+
+### Building a Self-Contained Executable (optional)
+
+If you prefer a single portable `.exe` that does not require the .NET runtime to be installed:
+
+```powershell
+dotnet publish -c Release -r win-x64 `
+  /p:SelfContained=true `
+  /p:PublishSingleFile=true `
+  -o .\output
+```
+
+The executable will be created at `output\FindDuplicateFiles.exe` and can be run directly:
+
+```powershell
+.\output\FindDuplicateFiles.exe dry    "C:\MyFolder"
+.\output\FindDuplicateFiles.exe delete "C:\MyFolder"
+.\output\FindDuplicateFiles.exe move   "C:\MyFolder" "C:\Duplicates"
 ```
 
 ---
+
+## Usage
 
 ### Modes Explained
 
@@ -184,6 +182,26 @@ Example:
 ```
 Hashing progress: 73.42%
 ```
+
+---
+
+## Running the Tests
+
+The project includes an [xUnit](https://xunit.net/) test suite that validates the duplicate-detection logic.
+
+From the repository root:
+
+```powershell
+dotnet test
+```
+
+To see the name of every test as it runs:
+
+```powershell
+dotnet test --verbosity normal
+```
+
+All tests are in `FindDuplicateFiles.Tests/` and cover hashing, duplicate detection, original-file selection, and all three handling modes (`dry`, `delete`, `move`).
 
 ---
 
