@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="FindDuplicateFiles.csproj" />
+  <Project Path="FindDuplicateFiles.Tests/FindDuplicateFiles.Tests.csproj" />
+</Solution>
