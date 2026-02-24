@@ -6,7 +6,7 @@ using Xunit;
 
 /// <summary>
 /// Tests for <see cref="DuplicateFinderCore"/>.
-/// Each test corresponds directly to a decision encoded in FastDuplicateCleaner.cs.
+/// Each test corresponds directly to a decision encoded in <see cref="DuplicateFinderCore"/>.
 /// </summary>
 public class DuplicateFinderCoreTests : IDisposable
 {
@@ -203,7 +203,7 @@ public class DuplicateFinderCoreTests : IDisposable
     }
 
     // ---------------------------------------------------------------
-    // SelectOriginal  (mirrors the "shortest filename" rule, line 160)
+    // SelectOriginal  (shortest filename rule in DuplicateFinderCore.SelectOriginal)
     // ---------------------------------------------------------------
 
     [Fact]
@@ -309,7 +309,7 @@ public class DuplicateFinderCoreTests : IDisposable
     /// <summary>
     /// When a file with the same name already exists in the destination
     /// folder, the duplicate is renamed with a counter: "(1)", "(2)", …
-    /// This matches the while-loop logic in FastDuplicateCleaner.cs lines 63-66.
+    /// This matches the counter loop in <see cref="DuplicateFinderCore.HandleDuplicate"/>.
     /// </summary>
     [Fact]
     public void HandleDuplicate_MoveMode_RenamesWithCounterOnCollision()

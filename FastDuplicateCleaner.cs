@@ -2,81 +2,10 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Collections.Concurrent;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
 
 class FastDuplicateCleaner
 {
-    // Full SHA256 content hash with progress reporting
-    static string FullHash(string path, Action<long> bytesHashedCallback = null)
-    {
-        using (var sha = SHA256.Create())
-        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-        {
-            byte[] buffer = new byte[1024 * 1024]; // 1 MB buffer
-            int read;
-            while ((read = fs.Read(buffer, 0, buffer.Length)) > 0)
-            {
-                sha.TransformBlock(buffer, 0, read, null, 0);
-                bytesHashedCallback?.Invoke(read);
-            }
-            sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-            return BitConverter.ToString(sha.Hash).Replace("-", "").ToLower();
-        }
-    }
-
-    static void HandleDuplicate(string filepath, string mode, string moveFolder)
-    {
-        if (string.IsNullOrWhiteSpace(mode))
-        {
-            Console.WriteLine($"Error: Mode is not specified. Skipping {filepath}");
-            return;
-        }
-
-        if (mode == "dry")
-        {
-            Console.WriteLine($"[DRY RUN] Duplicate: {filepath}");
-        }
-        else if (mode == "delete")
-        {
-            Console.WriteLine($"Deleting: {filepath}");
-            try { File.Delete(filepath); }
-            catch (Exception ex) { Console.WriteLine($"Failed to delete {filepath}: {ex.Message}"); }
-        }
-        else if (mode == "move")
-        {
-            if (string.IsNullOrWhiteSpace(moveFolder))
-            {
-                Console.WriteLine($"Error: Move folder is not specified. Cannot move {filepath}");
-                return;
-            }
-
-            try
-            {
-                Directory.CreateDirectory(moveFolder);
-                string dest = Path.Combine(moveFolder, Path.GetFileName(filepath));
-
-                int counter = 1;
-                string baseName = Path.Combine(moveFolder, Path.GetFileNameWithoutExtension(filepath));
-                string ext = Path.GetExtension(filepath);
-
-                while (File.Exists(dest))
-                {
-                    dest = $"{baseName} ({counter}){ext}";
-                    counter++;
-                }
-
-                Console.WriteLine($"Moving: {filepath} → {dest}");
-                File.Move(filepath, dest);
-            }
-            catch (Exception ex) { Console.WriteLine($"Failed to move {filepath}: {ex.Message}"); }
-        }
-        else
-        {
-            Console.WriteLine($"Unknown mode '{mode}'. Skipping {filepath}");
-        }
-    }
-
     static void Main(string[] args)
     {
         string targetFolder = args.Length > 1 ? args[1] : null;
@@ -131,7 +60,7 @@ class FastDuplicateCleaner
             {
                 try
                 {
-                    string hash = FullHash(file, bytesRead =>
+                    string hash = DuplicateFinderCore.ComputeHash(file, bytesRead =>
                     {
                         System.Threading.Interlocked.Add(ref processedBytes, bytesRead);
 
@@ -157,17 +86,16 @@ class FastDuplicateCleaner
         foreach (var group in finalHashGroups.Where(g => g.Value.Count > 1))
         {
             // Keep the file with the shortest filename as the "original"
-            var sorted = group.Value.OrderBy(f => Path.GetFileName(f).Length).ToList();
-
-            var original = sorted.First();       // keep this
-            var duplicates = sorted.Skip(1);     // everything else is duplicate
+            var original = DuplicateFinderCore.SelectOriginal(group.Value);
+            var duplicates = group.Value.Where(f => f != original);
 
             foreach (var dup in duplicates)
             {
-                HandleDuplicate(dup, mode, moveFolder);
+                DuplicateFinderCore.HandleDuplicate(dup, mode, moveFolder);
             }
         }
 
         Console.WriteLine("\nDone!");
     }
 }
+

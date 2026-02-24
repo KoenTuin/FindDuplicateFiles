@@ -5,17 +5,20 @@ using System.Linq;
 using System.Security.Cryptography;
 
 /// <summary>
-/// Exposes the core duplicate-finding logic from FastDuplicateCleaner as
-/// public, testable methods.  The algorithm and all decisions exactly match
-/// those in FastDuplicateCleaner.cs.
+/// Contains the core duplicate-finding logic shared by
+/// <see cref="FastDuplicateCleaner"/> and the test suite.
+/// This is the single authoritative implementation of every algorithmic
+/// decision (hashing, grouping, original-selection, duplicate-handling).
 /// </summary>
 public static class DuplicateFinderCore
 {
     /// <summary>
-    /// Computes the full SHA-256 hash of a file (mirrors <c>FullHash</c> in
-    /// FastDuplicateCleaner.cs).
+    /// Computes the full SHA-256 hash of a file using a 1 MB read buffer.
+    /// The optional <paramref name="bytesHashedCallback"/> is invoked after
+    /// each buffer read with the number of bytes just processed — use this
+    /// for progress reporting in the CLI.
     /// </summary>
-    public static string ComputeHash(string path)
+    public static string ComputeHash(string path, Action<long>? bytesHashedCallback = null)
     {
         using (var sha = SHA256.Create())
         using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -23,15 +26,18 @@ public static class DuplicateFinderCore
             byte[] buffer = new byte[1024 * 1024];
             int read;
             while ((read = fs.Read(buffer, 0, buffer.Length)) > 0)
+            {
                 sha.TransformBlock(buffer, 0, read, null, 0);
+                bytesHashedCallback?.Invoke(read);
+            }
             sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
             return BitConverter.ToString(sha.Hash!).Replace("-", "").ToLower();
         }
     }
 
     /// <summary>
-    /// Groups <paramref name="files"/> into sets of duplicates using the same
-    /// two-step algorithm as FastDuplicateCleaner:
+    /// Groups <paramref name="files"/> into sets of duplicates using a two-step
+    /// algorithm:
     /// 1. Group by file size (only sizes with 2+ files are candidates).
     /// 2. Within each size-group, compute SHA-256; files that share the same
     ///    hash are duplicates.
@@ -66,9 +72,8 @@ public static class DuplicateFinderCore
     }
 
     /// <summary>
-    /// Given a group of duplicate files, returns the file that the algorithm
-    /// in FastDuplicateCleaner.cs treats as the "original" to keep:
-    /// the entry with the <b>shortest filename</b> (not path).
+    /// Given a group of duplicate files, returns the file to keep as the
+    /// "original": the entry with the <b>shortest filename</b> (not full path).
     /// Ties are broken by the stable ordering already present in the list.
     /// </summary>
     public static string SelectOriginal(IEnumerable<string> duplicateGroup)
@@ -77,8 +82,13 @@ public static class DuplicateFinderCore
     }
 
     /// <summary>
-    /// Handles a duplicate file according to <paramref name="mode"/>, exactly
-    /// as <c>HandleDuplicate</c> does in FastDuplicateCleaner.cs.
+    /// Handles a duplicate file according to <paramref name="mode"/>:
+    /// <list type="bullet">
+    ///   <item><term>dry</term><description>logs the path but takes no action.</description></item>
+    ///   <item><term>delete</term><description>permanently removes the file.</description></item>
+    ///   <item><term>move</term><description>moves the file to <paramref name="moveFolder"/>,
+    ///     appending a counter suffix when a name collision occurs.</description></item>
+    /// </list>
     /// </summary>
     public static void HandleDuplicate(string filepath, string mode, string? moveFolder)
     {
