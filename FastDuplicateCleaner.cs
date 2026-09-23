@@ -7,6 +7,34 @@ using System.Threading.Tasks;
 
 class FastDuplicateCleaner
 {
+    static readonly object logLock = new object();
+    static string logFilePath;
+
+    static void LogAction(string action, string original, string destination)
+    {
+        if (string.IsNullOrWhiteSpace(logFilePath)) return;
+
+        string line = string.Join(",",
+            DateTime.Now.ToString("s"),
+            action,
+            CsvEscape(original),
+            CsvEscape(destination ?? string.Empty));
+
+        lock (logLock)
+        {
+            File.AppendAllText(logFilePath, line + Environment.NewLine);
+        }
+    }
+
+    static string CsvEscape(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+        {
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
+        }
+        return value;
+    }
+
     // Full SHA256 content hash with progress reporting
     static string FullHash(string path, Action<long> bytesHashedCallback = null)
     {
@@ -25,7 +53,7 @@ class FastDuplicateCleaner
         }
     }
 
-    static void HandleDuplicate(string filepath, string mode, string moveFolder)
+    static void HandleDuplicate(string filepath, string mode, string moveFolder, string targetFolder)
     {
         if (string.IsNullOrWhiteSpace(mode))
         {
@@ -36,11 +64,16 @@ class FastDuplicateCleaner
         if (mode == "dry")
         {
             Console.WriteLine($"[DRY RUN] Duplicate: {filepath}");
+            LogAction("dry-run", filepath, null);
         }
         else if (mode == "delete")
         {
             Console.WriteLine($"Deleting: {filepath}");
-            try { File.Delete(filepath); }
+            try
+            {
+                File.Delete(filepath);
+                LogAction("delete", filepath, null);
+            }
             catch (Exception ex) { Console.WriteLine($"Failed to delete {filepath}: {ex.Message}"); }
         }
         else if (mode == "move")
@@ -53,11 +86,17 @@ class FastDuplicateCleaner
 
             try
             {
-                Directory.CreateDirectory(moveFolder);
-                string dest = Path.Combine(moveFolder, Path.GetFileName(filepath));
+                // Preserve the file's original subfolder structure (relative to the
+                // scanned target folder) inside the duplicates folder, so the origin
+                // location is never lost just because the file was moved.
+                string relativeDir = Path.GetDirectoryName(Path.GetRelativePath(targetFolder, filepath)) ?? string.Empty;
+                string destDir = Path.Combine(moveFolder, relativeDir);
+                Directory.CreateDirectory(destDir);
+
+                string dest = Path.Combine(destDir, Path.GetFileName(filepath));
 
                 int counter = 1;
-                string baseName = Path.Combine(moveFolder, Path.GetFileNameWithoutExtension(filepath));
+                string baseName = Path.Combine(destDir, Path.GetFileNameWithoutExtension(filepath));
                 string ext = Path.GetExtension(filepath);
 
                 while (File.Exists(dest))
@@ -68,6 +107,7 @@ class FastDuplicateCleaner
 
                 Console.WriteLine($"Moving: {filepath} → {dest}");
                 File.Move(filepath, dest);
+                LogAction("move", filepath, dest);
             }
             catch (Exception ex) { Console.WriteLine($"Failed to move {filepath}: {ex.Message}"); }
         }
@@ -106,6 +146,12 @@ class FastDuplicateCleaner
             Console.WriteLine("Error: Target folder path is invalid.");
             return;
         }
+
+        // Persist an action log to disk so the origin of every moved/deleted file is
+        // recoverable even after the terminal window is closed.
+        logFilePath = Path.Combine(targetFolder, $"FastDuplicateCleaner_log_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+        File.WriteAllText(logFilePath, "Timestamp,Action,OriginalPath,DestinationPath" + Environment.NewLine);
+        Console.WriteLine($"Logging actions to: {logFilePath}");
 
         Console.WriteLine("\nScanning files...");
 
@@ -164,7 +210,7 @@ class FastDuplicateCleaner
 
             foreach (var dup in duplicates)
             {
-                HandleDuplicate(dup, mode, moveFolder);
+                HandleDuplicate(dup, mode, moveFolder, targetFolder);
             }
         }
 
